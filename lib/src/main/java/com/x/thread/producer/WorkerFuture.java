@@ -8,6 +8,7 @@ import com.x.thread.function.Worker;
 import java.util.LinkedList;
 import java.util.List;
 import java.util.concurrent.Callable;
+import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Future;
 import java.util.concurrent.FutureTask;
 import java.util.concurrent.ThreadPoolExecutor;
@@ -34,16 +35,18 @@ abstract class WorkerFuture extends FutureTask<Long> {
 
     static abstract class RunCallable<T> implements Callable<Long> {
         private final long startTime;
+        private final int maxCoreCount;
         private final Worker<T> worker;
         private final ProducerObserver observer;
-        private final ThreadPoolExecutor executor;
+        private final ExecutorService executor;
 
         private final List<Future<?>> futures;
         private final List<Cancelled> canceledList;
 
-        RunCallable(ThreadPoolExecutor executor, Worker<T> worker,
+        RunCallable(ExecutorService executor,int maxCoreCount, Worker<T> worker,
                     ProducerObserver observer) {
             this.executor = executor;
+            this.maxCoreCount = maxCoreCount;
             this.worker = worker;
             this.observer = observer;
             startTime = System.currentTimeMillis();
@@ -60,7 +63,7 @@ abstract class WorkerFuture extends FutureTask<Long> {
             final AtomicLatch latch = createLatch();
             final AtomicCounter<T> counter = createCounter(latch);
 
-            final int maxCoreCount = executor.getCorePoolSize();
+            //final int maxCoreCount = executor.getCorePoolSize();
             for (int i = 0; i < maxCoreCount; i++) {
                 ProducerRunnable task = new ProducerRunnable(worker, observer, counter);
                 Future<?> future = executor.submit(task);

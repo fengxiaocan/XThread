@@ -1,6 +1,9 @@
 package com.x.thread;
 
+import com.x.thread.thread.BinaryThreadPoolExecutor;
+
 import java.util.List;
+import java.util.concurrent.ExecutorService;
 import java.util.concurrent.LinkedBlockingQueue;
 import java.util.concurrent.ThreadFactory;
 import java.util.concurrent.ThreadPoolExecutor;
@@ -11,33 +14,30 @@ public final class RxThreadPool {
     private static Pool ioPool;
     private static Pool singlePool;
 
-    public static ThreadPoolExecutor createExecutor(int maxCount, long keepAliveTime, TimeUnit unit) {
-        ThreadPoolExecutor taskExecutor = new ThreadPoolExecutor(maxCount,
-                Integer.MAX_VALUE, keepAliveTime, unit,
-                new LinkedBlockingQueue<Runnable>(), new DefaultThreadFactory());
+    public static BinaryThreadPoolExecutor createExecutor(int maxCount, long keepAliveTime, TimeUnit unit) {
+        BinaryThreadPoolExecutor taskExecutor = new BinaryThreadPoolExecutor(maxCount,
+                Integer.MAX_VALUE, keepAliveTime, unit, new DefaultThreadFactory());
         return taskExecutor;
     }
 
-    public static ThreadPoolExecutor createExecutor(String name, int maxCount, long keepAliveTime, TimeUnit unit) {
-        ThreadPoolExecutor taskExecutor = new ThreadPoolExecutor(maxCount,
-                Integer.MAX_VALUE, keepAliveTime, unit,
-                new LinkedBlockingQueue<Runnable>(), new DefaultThreadFactory(name));
+    public static BinaryThreadPoolExecutor createExecutor(String name, int maxCount, long keepAliveTime, TimeUnit unit) {
+        BinaryThreadPoolExecutor taskExecutor = new BinaryThreadPoolExecutor(maxCount,
+                Integer.MAX_VALUE, keepAliveTime, unit, new DefaultThreadFactory(name));
         return taskExecutor;
     }
 
 
-    public static ThreadPoolExecutor createExecutor(String name, int maxCount, long keepAliveTime, TimeUnit unit, int priority, boolean isDaemon) {
-        ThreadPoolExecutor taskExecutor = new ThreadPoolExecutor(maxCount,
-                Integer.MAX_VALUE, keepAliveTime, unit,
-                new LinkedBlockingQueue<Runnable>(), new DefaultThreadFactory(name, priority,isDaemon));
+    public static BinaryThreadPoolExecutor createExecutor(String name, int maxCount, long keepAliveTime, TimeUnit unit, int priority, boolean isDaemon) {
+        BinaryThreadPoolExecutor taskExecutor = new BinaryThreadPoolExecutor(maxCount,
+                Integer.MAX_VALUE, keepAliveTime, unit,new DefaultThreadFactory(name, priority,isDaemon));
         return taskExecutor;
     }
 
-    public static ThreadPoolExecutor newThread(long keepAliveTime, TimeUnit unit) {
+    public static BinaryThreadPoolExecutor newThread(long keepAliveTime, TimeUnit unit) {
         return RxThreadPool.createExecutor(1000, keepAliveTime, unit);
     }
 
-    public static ThreadPoolExecutor newThread() {
+    public static BinaryThreadPoolExecutor newThread() {
         return newThread(60, TimeUnit.SECONDS);
     }
 
@@ -81,7 +81,7 @@ public final class RxThreadPool {
     }
 
     public static final class Pool {
-        private ThreadPoolExecutor executor;
+        private BinaryThreadPoolExecutor executor;
         private final String name;
         private int sCoreExecutorCount;
         private long keepAliveTime = TimeUnit.SECONDS.toMillis(60);
@@ -154,7 +154,7 @@ public final class RxThreadPool {
             executor = null;
         }
 
-        public ThreadPoolExecutor executor() {
+        public BinaryThreadPoolExecutor executor() {
             synchronized (ThreadPoolExecutor.class) {
                 if (executor == null || executor.isShutdown() || executor.isTerminated()) {
                     synchronized (ThreadPoolExecutor.class) {

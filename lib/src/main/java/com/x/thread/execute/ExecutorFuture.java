@@ -1,12 +1,14 @@
-package com.x.thread.producer;
+package com.x.thread.execute;
+
+import com.x.thread.function.RxFuture;
 
 import java.util.concurrent.Future;
 import java.util.concurrent.TimeUnit;
 
-final class ExecutorFuture implements com.x.thread.function.Future {
-    private final Future<Long> future;
+final class ExecutorFuture<R> implements RxFuture<R> {
+    private final Future<R> future;
 
-    public ExecutorFuture(Future<Long> future) {
+    public ExecutorFuture(Future<R> future) {
         this.future = future;
     }
 
@@ -28,18 +30,18 @@ final class ExecutorFuture implements com.x.thread.function.Future {
     }
 
     @Override
-    public void await(final Callback callback) {
+    public void await(final Callback<R> callback) {
         new Thread(new Runnable() {
             @Override
             public void run() {
-                long time = -1;
+                R value = null;
                 try {
-                    time = future.get();
+                    value = future.get();
                 } catch (Throwable e) {
                     cancel();
                 } finally {
                     if (callback != null) {
-                        callback.onFinish(time);
+                        callback.onFinish(value);
                     }
                 }
             }
@@ -47,18 +49,18 @@ final class ExecutorFuture implements com.x.thread.function.Future {
     }
 
     @Override
-    public void await(final long var1, final Callback callback) {
+    public void await(final long var1, final Callback<R> callback) {
         new Thread(new Runnable() {
             @Override
             public void run() {
-                long time = -1;
+                R value = null;
                 try {
-                    time = future.get(var1, TimeUnit.MILLISECONDS);
+                    value = future.get(var1, TimeUnit.MILLISECONDS);
                 } catch (Throwable e) {
                     cancel();
                 } finally {
                     if (callback != null) {
-                        callback.onFinish(time);
+                        callback.onFinish(value);
                     }
                 }
             }
@@ -66,18 +68,18 @@ final class ExecutorFuture implements com.x.thread.function.Future {
     }
 
     @Override
-    public void await(final long var1, final TimeUnit var3, final Callback callback) {
+    public void await(final long var1, final TimeUnit var3, final Callback<R> callback) {
         new Thread(new Runnable() {
             @Override
             public void run() {
-                long time = -1;
+                R value = null;
                 try {
-                    time = future.get(var1, var3);
+                    value = future.get(var1, var3);
                 } catch (Throwable e) {
                     cancel();
                 } finally {
                     if (callback != null) {
-                        callback.onFinish(time);
+                        callback.onFinish(value);
                     }
                 }
             }

@@ -1,5 +1,6 @@
 package com.x.thread;
 
+import com.x.thread.execute.ExecutorProvide;
 import com.x.thread.producer.ArrayProducer;
 import com.x.thread.producer.ListProducer;
 import com.x.thread.producer.Producer;
@@ -29,4 +30,13 @@ public final class RxThread {
     public static Producer<Long> range(final long start, long end) {
         return new RangeLongProducer(start, end);
     }
+
+    public static ExecutorProvide executor(int coreCount) {
+        return new ExecutorProvide(coreCount);
+    }
+
+    public static ExecutorProvide executor() {
+        return new ExecutorProvide();
+    }
+
 }

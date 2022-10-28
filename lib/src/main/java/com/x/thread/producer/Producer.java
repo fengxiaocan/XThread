@@ -3,22 +3,21 @@ package com.x.thread.producer;
 import com.x.thread.RxThreadPool;
 import com.x.thread.function.Observer;
 import com.x.thread.scheduler.Scheduler;
+import com.x.thread.thread.BinaryThreadPoolExecutor;
 
 import java.util.List;
-import java.util.Queue;
+import java.util.concurrent.ExecutorService;
 import java.util.concurrent.ThreadFactory;
-import java.util.concurrent.ThreadPoolExecutor;
 import java.util.concurrent.TimeUnit;
-import java.util.concurrent.atomic.AtomicReference;
-import java.util.concurrent.atomic.AtomicReferenceArray;
 
 public abstract class Producer<T> implements ProducerSource<T> {
     private ThreadFactory threadFactory;
-    private ThreadPoolExecutor coreExecutor;
+    private ExecutorService coreExecutor;
     private int maxCoreCount = 5;
     //1：在没有其他程序运行的情况下运行。2-3：后台计算；4-6：IO；7-9：交互，事件驱动；10：关键问题；
     private int priority = 5;
     private boolean isDaemon = false;
+    private boolean isCore = false;
     private Observer observer;
     private Scheduler schedulers;
     private String name = "Core-Work";
@@ -44,7 +43,7 @@ public abstract class Producer<T> implements ProducerSource<T> {
     }
 
     public final Producer<T> executeCore(int maxCoreCount) {
-        this.maxCoreCount = maxCoreCount;
+        this.maxCoreCount = Math.max(1, maxCoreCount);
         return this;
     }
 
@@ -53,7 +52,7 @@ public abstract class Producer<T> implements ProducerSource<T> {
         return this;
     }
 
-    public final Producer<T> executeOn(ThreadPoolExecutor poolExecutor) {
+    public final Producer<T> executeOn(ExecutorService poolExecutor) {
         this.coreExecutor = poolExecutor;
         return this;
     }
@@ -74,12 +73,16 @@ public abstract class Producer<T> implements ProducerSource<T> {
     }
 
     public final Producer<T> calculate() {
-        this.priority = 1;
+        this.priority = 6;
         return this;
     }
 
     public final Producer<T> setDaemon(boolean daemon) {
         isDaemon = daemon;
+        return this;
+    }
+    public final Producer<T> setCore(boolean core) {
+        isCore = core;
         return this;
     }
 
@@ -104,19 +107,27 @@ public abstract class Producer<T> implements ProducerSource<T> {
         return this;
     }
 
+    protected final int getMaxCoreCount() {
+        return maxCoreCount;
+    }
+
+    protected final boolean isCore() {
+        return isCore;
+    }
+
     protected final ProducerObserver createObserver() {
         return new ProducerObserver(observer, schedulers);
     }
 
-    protected final ThreadPoolExecutor coreExecutor() {
+    protected final ExecutorService coreExecutor() {
         if (coreExecutor == null || coreExecutor.isShutdown() || coreExecutor.isTerminated()) {
             coreExecutor = RxThreadPool.work().executor();
         }
         return coreExecutor;
     }
 
-    protected final ThreadPoolExecutor producerExecutor() {
-        ThreadPoolExecutor executor = RxThreadPool.createExecutor(name, maxCoreCount, 5, TimeUnit.SECONDS, priority, isDaemon);
+    protected final BinaryThreadPoolExecutor producerExecutor() {
+        BinaryThreadPoolExecutor executor = RxThreadPool.createExecutor(name, maxCoreCount, 5, TimeUnit.SECONDS, priority, isDaemon);
         executor.allowCoreThreadTimeOut(true);
         if (threadFactory != null) {
             executor.setThreadFactory(threadFactory);

@@ -5,6 +5,7 @@ import com.x.thread.atomic.AtomicLatch;
 import com.x.thread.atomic.LongCountDownLatch;
 import com.x.thread.function.Worker;
 
+import java.util.concurrent.ExecutorService;
 import java.util.concurrent.ThreadPoolExecutor;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicLong;
@@ -17,7 +18,7 @@ final class LongFuture extends WorkerFuture {
 
     public static LongFuture create(Producer<Long> producer, Worker<Long> worker,
                                     final long start, final long end) {
-        RunCallable callable = new RunCallable(producer.producerExecutor(), worker, producer.createObserver(), start, end);
+        RunCallable callable = new RunCallable(producer.producerExecutor(), producer.getMaxCoreCount(), worker, producer.createObserver(), start, end);
         return new LongFuture(callable);
     }
 
@@ -26,8 +27,8 @@ final class LongFuture extends WorkerFuture {
         final long start;
         final long end;
 
-        RunCallable(ThreadPoolExecutor executor, Worker<Long> worker, ProducerObserver observer, long start, long end) {
-            super(executor, worker, observer);
+        RunCallable(ExecutorService executor, int maxCoreCount, Worker<Long> worker, ProducerObserver observer, long start, long end) {
+            super(executor, maxCoreCount, worker, observer);
             this.start = start;
             this.end = end;
         }
