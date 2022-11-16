@@ -11,7 +11,6 @@ import java.util.concurrent.Callable;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Future;
 import java.util.concurrent.FutureTask;
-import java.util.concurrent.ThreadPoolExecutor;
 
 abstract class WorkerFuture extends FutureTask<Long> {
     private final RunCallable runCallable;
@@ -43,7 +42,7 @@ abstract class WorkerFuture extends FutureTask<Long> {
         private final List<Future<?>> futures;
         private final List<Cancelled> canceledList;
 
-        RunCallable(ExecutorService executor,int maxCoreCount, Worker<T> worker,
+        RunCallable(ExecutorService executor, int maxCoreCount, Worker<T> worker,
                     ProducerObserver observer) {
             this.executor = executor;
             this.maxCoreCount = maxCoreCount;

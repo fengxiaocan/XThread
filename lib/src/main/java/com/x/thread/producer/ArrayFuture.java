@@ -7,7 +7,6 @@ import com.x.thread.function.Worker;
 
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.ExecutorService;
-import java.util.concurrent.ThreadPoolExecutor;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicInteger;
 
@@ -17,7 +16,7 @@ final class ArrayFuture<T> extends WorkerFuture {
     }
 
     public static <T> ArrayFuture<T> create(Producer<T> producer, Worker<T> worker, final T[] array) {
-        return new ArrayFuture<>(new RunCallable<T>(producer.producerExecutor(),producer.getMaxCoreCount(), worker, producer.createObserver(), new Array<T>(array)));
+        return new ArrayFuture<>(new RunCallable<T>(producer.producerExecutor(), producer.getMaxCoreCount(), worker, producer.createObserver(), new Array<T>(array)));
     }
 
     public static <T> ArrayFuture<T> create(Producer<T> producer, Worker<T> worker, final java.util.List<T> list) {

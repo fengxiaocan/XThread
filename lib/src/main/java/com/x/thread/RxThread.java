@@ -1,11 +1,11 @@
 package com.x.thread;
 
-import com.x.thread.execute.ExecutorProvide;
 import com.x.thread.producer.ArrayProducer;
 import com.x.thread.producer.ListProducer;
 import com.x.thread.producer.Producer;
 import com.x.thread.producer.RangeLongProducer;
 import com.x.thread.producer.RangeProducer;
+import com.x.thread.provide.ExecutorProvide;
 
 import java.util.List;
 
@@ -37,6 +37,14 @@ public final class RxThread {
 
     public static ExecutorProvide executor() {
         return new ExecutorProvide();
+    }
+
+    public static void sleep(long time) {
+        try {
+            Thread.sleep(time);
+        } catch (InterruptedException e) {
+            e.printStackTrace();
+        }
     }
 
 }

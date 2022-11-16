@@ -1,4 +1,4 @@
-package com.x.thread.thread;
+package com.x.thread.execute;
 
 import java.util.ArrayList;
 import java.util.ConcurrentModificationException;
@@ -6,11 +6,10 @@ import java.util.HashSet;
 import java.util.Iterator;
 import java.util.List;
 import java.util.concurrent.AbstractExecutorService;
-import java.util.concurrent.Callable;
+import java.util.concurrent.BlockingQueue;
 import java.util.concurrent.Executors;
 import java.util.concurrent.Future;
 import java.util.concurrent.RejectedExecutionException;
-import java.util.concurrent.RunnableFuture;
 import java.util.concurrent.ThreadFactory;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicInteger;
@@ -18,52 +17,53 @@ import java.util.concurrent.locks.AbstractQueuedSynchronizer;
 import java.util.concurrent.locks.Condition;
 import java.util.concurrent.locks.ReentrantLock;
 
-public class BinaryThreadPoolExecutor extends AbstractExecutorService {
-    private static final int COUNT_BITS = 29;
-    private static final int COUNT_MASK = 536870911;
-    private static final int RUNNING = -536870912;
-    private static final int SHUTDOWN = 0;
-    private static final int STOP = 536870912;
-    private static final int TIDYING = 1073741824;
-    private static final int TERMINATED = 1610612736;
-    private static final RejectedExecutionHandler defaultHandler = new BinaryThreadPoolExecutor.AbortPolicy();
-    private static final RuntimePermission shutdownPerm = new RuntimePermission("modifyThread");
-    private static final boolean ONLY_ONE = true;
-    private final AtomicInteger ctl;
-    private final BinaryQueue<Runnable> workQueue = new BinaryQueue<>();
-    private final ReentrantLock mainLock;
-    private final HashSet<BinaryThreadPoolExecutor.Worker> workers;
-    private final Condition termination;
-    private int largestPoolSize;
-    private long completedTaskCount;
-    private volatile ThreadFactory threadFactory;
-    private volatile RejectedExecutionHandler handler;
-    private volatile long keepAliveTime;
-    private volatile boolean allowCoreThreadTimeOut;
-    private volatile int corePoolSize;
-    private volatile int maximumPoolSize;
+public class BAKThreadPoolExecutor extends AbstractExecutorService {
+    protected static final int COUNT_BITS = 29;
+    protected static final int COUNT_MASK = 536870911;
+    protected static final int RUNNING = -536870912;
+    protected static final int SHUTDOWN = 0;
+    protected static final int STOP = 536870912;
+    protected static final int TIDYING = 1073741824;
+    protected static final int TERMINATED = 1610612736;
+    protected static final RejectedExecutionHandler defaultHandler = new BAKThreadPoolExecutor.AbortPolicy();
+    protected static final RuntimePermission shutdownPerm = new RuntimePermission("modifyThread");
+    protected static final boolean ONLY_ONE = true;
+    protected final AtomicInteger ctl;
+    protected final BlockingQueue<Runnable> workQueue;
+    protected final ReentrantLock mainLock;
+    protected final HashSet<BAKThreadPoolExecutor.Worker> workers;
+    protected final Condition termination;
+    protected int largestPoolSize;
+    protected long completedTaskCount;
+    protected volatile ThreadFactory threadFactory;
+    protected volatile RejectedExecutionHandler handler;
+    protected volatile long keepAliveTime;
+    protected volatile boolean allowCoreThreadTimeOut;
+    protected volatile int corePoolSize;
+    protected volatile int maximumPoolSize;
 
-    public BinaryThreadPoolExecutor(int corePoolSize, int maximumPoolSize, long keepAliveTime, TimeUnit unit) {
-        this(corePoolSize, maximumPoolSize, keepAliveTime, unit, Executors.defaultThreadFactory(), defaultHandler);
+    public BAKThreadPoolExecutor(int corePoolSize, int maximumPoolSize, long keepAliveTime, TimeUnit unit, BlockingQueue<Runnable> workQueue) {
+        this(corePoolSize, maximumPoolSize, keepAliveTime, unit, workQueue, Executors.defaultThreadFactory(), defaultHandler);
     }
 
-    public BinaryThreadPoolExecutor(int corePoolSize, int maximumPoolSize, long keepAliveTime, TimeUnit unit, ThreadFactory threadFactory) {
-        this(corePoolSize, maximumPoolSize, keepAliveTime, unit, threadFactory, defaultHandler);
+    public BAKThreadPoolExecutor(int corePoolSize, int maximumPoolSize, long keepAliveTime, TimeUnit unit, BlockingQueue<Runnable> workQueue, ThreadFactory threadFactory) {
+        this(corePoolSize, maximumPoolSize, keepAliveTime, unit, workQueue, threadFactory, defaultHandler);
     }
 
-    public BinaryThreadPoolExecutor(int corePoolSize, int maximumPoolSize, long keepAliveTime, TimeUnit unit, RejectedExecutionHandler handler) {
-        this(corePoolSize, maximumPoolSize, keepAliveTime, unit, Executors.defaultThreadFactory(), handler);
+    public BAKThreadPoolExecutor(int corePoolSize, int maximumPoolSize, long keepAliveTime, TimeUnit unit, BlockingQueue<Runnable> workQueue, RejectedExecutionHandler handler) {
+        this(corePoolSize, maximumPoolSize, keepAliveTime, unit, workQueue, Executors.defaultThreadFactory(), handler);
     }
 
-    public BinaryThreadPoolExecutor(int corePoolSize, int maximumPoolSize, long keepAliveTime, TimeUnit unit, ThreadFactory threadFactory, RejectedExecutionHandler handler) {
-        this.ctl = new AtomicInteger(ctlOf(-536870912, 0));
+    public BAKThreadPoolExecutor(int corePoolSize, int maximumPoolSize, long keepAliveTime, TimeUnit unit, BlockingQueue<Runnable> workQueue, ThreadFactory threadFactory, RejectedExecutionHandler handler) {
+        this.ctl = new AtomicInteger(ctlOf(RUNNING, SHUTDOWN));
         this.mainLock = new ReentrantLock();
         this.workers = new HashSet();
         this.termination = this.mainLock.newCondition();
         if (corePoolSize >= 0 && maximumPoolSize > 0 && maximumPoolSize >= corePoolSize && keepAliveTime >= 0L) {
-            if (threadFactory != null && handler != null) {
+            if (workQueue != null && threadFactory != null && handler != null) {
                 this.corePoolSize = corePoolSize;
                 this.maximumPoolSize = maximumPoolSize;
+                this.workQueue = workQueue;
                 this.keepAliveTime = unit.toNanos(keepAliveTime);
                 this.threadFactory = threadFactory;
                 this.handler = handler;
@@ -75,43 +75,43 @@ public class BinaryThreadPoolExecutor extends AbstractExecutorService {
         }
     }
 
-    private static int runStateOf(int c) {
-        return c & -536870912;
+    protected static int runStateOf(int c) {
+        return c & RUNNING;
     }
 
-    private static int workerCountOf(int c) {
-        return c & 536870911;
+    protected static int workerCountOf(int c) {
+        return c & COUNT_MASK;
     }
 
-    private static int ctlOf(int rs, int wc) {
+    protected static int ctlOf(int rs, int wc) {
         return rs | wc;
     }
 
-    private static boolean runStateLessThan(int c, int s) {
+    protected static boolean runStateLessThan(int c, int s) {
         return c < s;
     }
 
-    private static boolean runStateAtLeast(int c, int s) {
+    protected static boolean runStateAtLeast(int c, int s) {
         return c >= s;
     }
 
-    private static boolean isRunning(int c) {
+    protected static boolean isRunning(int c) {
         return c < 0;
     }
 
-    private boolean compareAndIncrementWorkerCount(int expect) {
+    protected boolean compareAndIncrementWorkerCount(int expect) {
         return this.ctl.compareAndSet(expect, expect + 1);
     }
 
-    private boolean compareAndDecrementWorkerCount(int expect) {
+    protected boolean compareAndDecrementWorkerCount(int expect) {
         return this.ctl.compareAndSet(expect, expect - 1);
     }
 
-    private void decrementWorkerCount() {
+    protected void decrementWorkerCount() {
         this.ctl.addAndGet(-1);
     }
 
-    private void advanceRunState(int targetState) {
+    protected void advanceRunState(int targetState) {
         int c;
         do {
             c = this.ctl.get();
@@ -119,15 +119,15 @@ public class BinaryThreadPoolExecutor extends AbstractExecutorService {
 
     }
 
-    final void tryTerminate() {
+    protected final void tryTerminate() {
         while (true) {
             int c = this.ctl.get();
-            if (isRunning(c) || runStateAtLeast(c, 1073741824) || runStateLessThan(c, 536870912) && !this.workQueue.isEmpty()) {
+            if (isRunning(c) || runStateAtLeast(c, TIDYING) || runStateLessThan(c, STOP) && !this.workQueue.isEmpty()) {
                 return;
             }
 
             if (workerCountOf(c) != 0) {
-                this.interruptIdleWorkers(true);
+                this.interruptIdleWorkers(ONLY_ONE);
                 return;
             }
 
@@ -135,14 +135,14 @@ public class BinaryThreadPoolExecutor extends AbstractExecutorService {
             mainLock.lock();
 
             try {
-                if (!this.ctl.compareAndSet(c, ctlOf(1073741824, 0))) {
+                if (!this.ctl.compareAndSet(c, ctlOf(TIDYING, 0))) {
                     continue;
                 }
 
                 try {
                     this.terminated();
                 } finally {
-                    this.ctl.set(ctlOf(1610612736, 0));
+                    this.ctl.set(ctlOf(TERMINATED, 0));
                     this.termination.signalAll();
                 }
             } finally {
@@ -153,31 +153,31 @@ public class BinaryThreadPoolExecutor extends AbstractExecutorService {
         }
     }
 
-    private void checkShutdownAccess() {
+    protected void checkShutdownAccess() {
         SecurityManager security = System.getSecurityManager();
         if (security != null) {
             security.checkPermission(shutdownPerm);
             Iterator var2 = this.workers.iterator();
 
             while (var2.hasNext()) {
-                BinaryThreadPoolExecutor.Worker w = (BinaryThreadPoolExecutor.Worker) var2.next();
+                BAKThreadPoolExecutor.Worker w = (BAKThreadPoolExecutor.Worker) var2.next();
                 security.checkAccess(w.thread);
             }
         }
 
     }
 
-    private void interruptWorkers() {
+    protected void interruptWorkers() {
         Iterator var1 = this.workers.iterator();
 
         while (var1.hasNext()) {
-            BinaryThreadPoolExecutor.Worker w = (BinaryThreadPoolExecutor.Worker) var1.next();
+            BAKThreadPoolExecutor.Worker w = (BAKThreadPoolExecutor.Worker) var1.next();
             w.interruptIfStarted();
         }
 
     }
 
-    private void interruptIdleWorkers(boolean onlyOne) {
+    protected void interruptIdleWorkers(boolean onlyOne) {
         ReentrantLock mainLock = this.mainLock;
         mainLock.lock();
 
@@ -185,7 +185,7 @@ public class BinaryThreadPoolExecutor extends AbstractExecutorService {
             Iterator var3 = this.workers.iterator();
 
             while (var3.hasNext()) {
-                BinaryThreadPoolExecutor.Worker w = (BinaryThreadPoolExecutor.Worker) var3.next();
+                BAKThreadPoolExecutor.Worker w = (BAKThreadPoolExecutor.Worker) var3.next();
                 Thread t = w.thread;
                 if (!t.isInterrupted() && w.tryLock()) {
                     try {
@@ -206,19 +206,19 @@ public class BinaryThreadPoolExecutor extends AbstractExecutorService {
 
     }
 
-    private void interruptIdleWorkers() {
+    protected void interruptIdleWorkers() {
         this.interruptIdleWorkers(false);
     }
 
-    final void reject(Runnable command) {
+    protected final void reject(Runnable command) {
         this.handler.rejectedExecution(command, this);
     }
 
-    void onShutdown() {
+    protected void onShutdown() {
     }
 
-    private List<Runnable> drainQueue() {
-        BinaryQueue<Runnable> q = this.workQueue;
+    protected List<Runnable> drainQueue() {
+        BlockingQueue<Runnable> q = this.workQueue;
         ArrayList<Runnable> taskList = new ArrayList();
         q.drainTo(taskList);
         if (!q.isEmpty()) {
@@ -236,19 +236,19 @@ public class BinaryThreadPoolExecutor extends AbstractExecutorService {
         return taskList;
     }
 
-    private boolean addWorker(Runnable firstTask, boolean core) {
+    protected boolean addWorker(Runnable firstTask, boolean core) {
         int c = this.ctl.get();
 
         label247:
-        while (!runStateAtLeast(c, 0) || !runStateAtLeast(c, 536870912) && firstTask == null && !this.workQueue.isEmpty()) {
-            while (workerCountOf(c) < ((core ? this.corePoolSize : this.maximumPoolSize) & 536870911)) {
+        while (!runStateAtLeast(c, 0) || !runStateAtLeast(c, STOP) && firstTask == null && !this.workQueue.isEmpty()) {
+            while (workerCountOf(c) < ((core ? this.corePoolSize : this.maximumPoolSize) & COUNT_MASK)) {
                 if (this.compareAndIncrementWorkerCount(c)) {
                     boolean workerStarted = false;
                     boolean workerAdded = false;
-                    BinaryThreadPoolExecutor.Worker w = null;
+                    BAKThreadPoolExecutor.Worker w = null;
 
                     try {
-                        w = new BinaryThreadPoolExecutor.Worker(firstTask);
+                        w = new BAKThreadPoolExecutor.Worker(firstTask);
                         Thread t = w.thread;
                         if (t != null) {
                             ReentrantLock mainLock = this.mainLock;
@@ -256,7 +256,7 @@ public class BinaryThreadPoolExecutor extends AbstractExecutorService {
 
                             try {
                                 c = this.ctl.get();
-                                if (isRunning(c) || runStateLessThan(c, 536870912) && firstTask == null) {
+                                if (isRunning(c) || runStateLessThan(c, STOP) && firstTask == null) {
                                     if (t.getState() != Thread.State.NEW) {
                                         throw new IllegalThreadStateException();
                                     }
@@ -299,7 +299,7 @@ public class BinaryThreadPoolExecutor extends AbstractExecutorService {
         return false;
     }
 
-    private void addWorkerFailed(BinaryThreadPoolExecutor.Worker w) {
+    protected void addWorkerFailed(BAKThreadPoolExecutor.Worker w) {
         ReentrantLock mainLock = this.mainLock;
         mainLock.lock();
 
@@ -316,7 +316,7 @@ public class BinaryThreadPoolExecutor extends AbstractExecutorService {
 
     }
 
-    private void processWorkerExit(BinaryThreadPoolExecutor.Worker w, boolean completedAbruptly) {
+    protected void processWorkerExit(BAKThreadPoolExecutor.Worker w, boolean completedAbruptly) {
         if (completedAbruptly) {
             this.decrementWorkerCount();
         }
@@ -333,7 +333,7 @@ public class BinaryThreadPoolExecutor extends AbstractExecutorService {
 
         this.tryTerminate();
         int c = this.ctl.get();
-        if (runStateLessThan(c, 536870912)) {
+        if (runStateLessThan(c, STOP)) {
             if (!completedAbruptly) {
                 int min = this.allowCoreThreadTimeOut ? 0 : this.corePoolSize;
                 if (min == 0 && !this.workQueue.isEmpty()) {
@@ -350,12 +350,12 @@ public class BinaryThreadPoolExecutor extends AbstractExecutorService {
 
     }
 
-    private Runnable getTask() {
+    protected Runnable getTask() {
         boolean timedOut = false;
 
         while (true) {
             int c = this.ctl.get();
-            if (runStateAtLeast(c, 0) && (runStateAtLeast(c, 536870912) || this.workQueue.isEmpty())) {
+            if (runStateAtLeast(c, 0) && (runStateAtLeast(c, STOP) || this.workQueue.isEmpty())) {
                 this.decrementWorkerCount();
                 return null;
             }
@@ -379,7 +379,7 @@ public class BinaryThreadPoolExecutor extends AbstractExecutorService {
         }
     }
 
-    final void runWorker(BinaryThreadPoolExecutor.Worker w) {
+    protected final void runWorker(BAKThreadPoolExecutor.Worker w) {
         Thread wt = Thread.currentThread();
         Runnable task = w.firstTask;
         w.firstTask = null;
@@ -389,7 +389,7 @@ public class BinaryThreadPoolExecutor extends AbstractExecutorService {
         try {
             while (task != null || (task = this.getTask()) != null) {
                 w.lock();
-                if ((runStateAtLeast(this.ctl.get(), 536870912) || Thread.interrupted() && runStateAtLeast(this.ctl.get(), 536870912)) && !wt.isInterrupted()) {
+                if ((runStateAtLeast(this.ctl.get(), STOP) || Thread.interrupted() && runStateAtLeast(this.ctl.get(), STOP)) && !wt.isInterrupted()) {
                     wt.interrupt();
                 }
 
@@ -398,7 +398,7 @@ public class BinaryThreadPoolExecutor extends AbstractExecutorService {
 
                     try {
                         task.run();
-                        this.afterExecute(task, null);
+                        this.afterExecute(task, (Throwable) null);
                     } catch (Throwable var14) {
                         this.afterExecute(task, var14);
                         throw var14;
@@ -418,7 +418,30 @@ public class BinaryThreadPoolExecutor extends AbstractExecutorService {
     }
 
     public void execute(Runnable command) {
-        execute(command,false);
+        if (command == null) {
+            throw new NullPointerException();
+        } else {
+            int c = this.ctl.get();
+            if (workerCountOf(c) < this.corePoolSize) {
+                if (this.addWorker(command, true)) {
+                    return;
+                }
+
+                c = this.ctl.get();
+            }
+
+            if (isRunning(c) && this.workQueue.offer(command)) {
+                int recheck = this.ctl.get();
+                if (!isRunning(recheck) && this.remove(command)) {
+                    this.reject(command);
+                } else if (workerCountOf(recheck) == 0) {
+                    this.addWorker((Runnable) null, false);
+                }
+            } else if (!this.addWorker(command, false)) {
+                this.reject(command);
+            }
+
+        }
     }
 
     public void shutdown() {
@@ -444,7 +467,7 @@ public class BinaryThreadPoolExecutor extends AbstractExecutorService {
         List tasks;
         try {
             this.checkShutdownAccess();
-            this.advanceRunState(536870912);
+            this.advanceRunState(STOP);
             this.interruptWorkers();
             tasks = this.drainQueue();
         } finally {
@@ -459,17 +482,17 @@ public class BinaryThreadPoolExecutor extends AbstractExecutorService {
         return runStateAtLeast(this.ctl.get(), 0);
     }
 
-    boolean isStopped() {
-        return runStateAtLeast(this.ctl.get(), 536870912);
+    protected boolean isStopped() {
+        return runStateAtLeast(this.ctl.get(), STOP);
     }
 
     public boolean isTerminating() {
         int c = this.ctl.get();
-        return runStateAtLeast(c, 0) && runStateLessThan(c, 1610612736);
+        return runStateAtLeast(c, 0) && runStateLessThan(c, TERMINATED);
     }
 
     public boolean isTerminated() {
-        return runStateAtLeast(this.ctl.get(), 1610612736);
+        return runStateAtLeast(this.ctl.get(), TERMINATED);
     }
 
     public boolean awaitTermination(long timeout, TimeUnit unit) throws InterruptedException {
@@ -479,7 +502,7 @@ public class BinaryThreadPoolExecutor extends AbstractExecutorService {
 
         boolean var7;
         try {
-            while (runStateLessThan(this.ctl.get(), 1610612736)) {
+            while (runStateLessThan(this.ctl.get(), TERMINATED)) {
                 if (nanos <= 0L) {
                     var7 = false;
                     return var7;
@@ -494,9 +517,6 @@ public class BinaryThreadPoolExecutor extends AbstractExecutorService {
         }
 
         return var7;
-    }
-
-    protected void finalize() {
     }
 
     public ThreadFactory getThreadFactory() {
@@ -549,7 +569,7 @@ public class BinaryThreadPoolExecutor extends AbstractExecutorService {
         return workerCountOf(this.ctl.get()) < this.corePoolSize && this.addWorker((Runnable) null, true);
     }
 
-    void ensurePrestart() {
+    protected void ensurePrestart() {
         int wc = workerCountOf(this.ctl.get());
         if (wc < this.corePoolSize) {
             this.addWorker((Runnable) null, true);
@@ -621,7 +641,7 @@ public class BinaryThreadPoolExecutor extends AbstractExecutorService {
         return unit.convert(this.keepAliveTime, TimeUnit.NANOSECONDS);
     }
 
-    public BinaryQueue<Runnable> getQueue() {
+    public BlockingQueue<Runnable> getQueue() {
         return this.workQueue;
     }
 
@@ -632,7 +652,7 @@ public class BinaryThreadPoolExecutor extends AbstractExecutorService {
     }
 
     public void purge() {
-        BinaryQueue q = this.workQueue;
+        BlockingQueue q = this.workQueue;
 
         try {
             Iterator it = q.iterator();
@@ -681,7 +701,7 @@ public class BinaryThreadPoolExecutor extends AbstractExecutorService {
             Iterator var3 = this.workers.iterator();
 
             while (var3.hasNext()) {
-                BinaryThreadPoolExecutor.Worker w = (BinaryThreadPoolExecutor.Worker) var3.next();
+                BAKThreadPoolExecutor.Worker w = (BAKThreadPoolExecutor.Worker) var3.next();
                 if (w.isLocked()) {
                     ++n;
                 }
@@ -717,7 +737,7 @@ public class BinaryThreadPoolExecutor extends AbstractExecutorService {
             Iterator var4 = this.workers.iterator();
 
             while (var4.hasNext()) {
-                BinaryThreadPoolExecutor.Worker w = (BinaryThreadPoolExecutor.Worker) var4.next();
+                BAKThreadPoolExecutor.Worker w = (BAKThreadPoolExecutor.Worker) var4.next();
                 n += w.completedTasks;
                 if (w.isLocked()) {
                     ++n;
@@ -738,9 +758,9 @@ public class BinaryThreadPoolExecutor extends AbstractExecutorService {
         try {
             long n = this.completedTaskCount;
 
-            BinaryThreadPoolExecutor.Worker w;
+            BAKThreadPoolExecutor.Worker w;
             for (Iterator var4 = this.workers.iterator(); var4.hasNext(); n += w.completedTasks) {
-                w = (BinaryThreadPoolExecutor.Worker) var4.next();
+                w = (BAKThreadPoolExecutor.Worker) var4.next();
             }
 
             long var9 = n;
@@ -764,7 +784,7 @@ public class BinaryThreadPoolExecutor extends AbstractExecutorService {
             Iterator var6 = this.workers.iterator();
 
             while (var6.hasNext()) {
-                BinaryThreadPoolExecutor.Worker w = (BinaryThreadPoolExecutor.Worker) var6.next();
+                BAKThreadPoolExecutor.Worker w = (BAKThreadPoolExecutor.Worker) var6.next();
                 ncompleted += w.completedTasks;
                 if (w.isLocked()) {
                     ++nactive;
@@ -775,7 +795,7 @@ public class BinaryThreadPoolExecutor extends AbstractExecutorService {
         }
 
         int c = this.ctl.get();
-        String runState = isRunning(c) ? "Running" : (runStateAtLeast(c, 1610612736) ? "Terminated" : "Shutting down");
+        String runState = isRunning(c) ? "Running" : (runStateAtLeast(c, TERMINATED) ? "Terminated" : "Shutting down");
         return super.toString() + "[" + runState + ", pool size = " + nworkers + ", active threads = " + nactive + ", queued tasks = " + this.workQueue.size() + ", completed tasks = " + ncompleted + "]";
     }
 
@@ -788,83 +808,15 @@ public class BinaryThreadPoolExecutor extends AbstractExecutorService {
     protected void terminated() {
     }
 
-    @Override
-    public Future<?> submit(Runnable task) {
-        return super.submit(task);
-    }
-
-    @Override
-    public <T> Future<T> submit(Runnable task, T result) {
-        return super.submit(task, result);
-    }
-
-    @Override
-    public <T> Future<T> submit(Callable<T> task) {
-        return super.submit(task);
-    }
-
-    public Future<?> submit(Runnable task, boolean isUrgent) {
-        if (task == null) {
-            throw new NullPointerException();
-        } else {
-            RunnableFuture ftask = this.newTaskFor(task, null);
-            this.execute(ftask, isUrgent);
-            return ftask;
-        }
-    }
-
-    public <T> Future<T> submit(Runnable task, T result, boolean isUrgent) {
-        if (task == null) {
-            throw new NullPointerException();
-        } else {
-            RunnableFuture<T> ftask = this.newTaskFor(task, result);
-            this.execute(ftask, isUrgent);
-            return ftask;
-        }
-    }
-
-    public <T> Future<T> submit(Callable<T> task, boolean isUrgent) {
-        if (task == null) {
-            throw new NullPointerException();
-        } else {
-            RunnableFuture<T> ftask = this.newTaskFor(task);
-            this.execute(ftask, isUrgent);
-            return ftask;
-        }
-    }
-
-    public void execute(Runnable command, boolean isUrgent) {
-        if (command == null) {
-            throw new NullPointerException();
-        } else {
-            int c = this.ctl.get();
-            if (workerCountOf(c) < this.corePoolSize) {
-                if (this.addWorker(command, true)) {
-                    return;
-                }
-
-                c = this.ctl.get();
-            }
-
-            if (isRunning(c) && this.workQueue.offer(command, isUrgent)) {
-                int recheck = this.ctl.get();
-                if (!isRunning(recheck) && this.remove(command)) {
-                    this.reject(command);
-                } else if (workerCountOf(recheck) == 0) {
-                    this.addWorker((Runnable) null, false);
-                }
-            } else if (!this.addWorker(command, false)) {
-                this.reject(command);
-            }
-
-        }
+    public interface RejectedExecutionHandler {
+        void rejectedExecution(Runnable r, BAKThreadPoolExecutor e);
     }
 
     public static class DiscardOldestPolicy implements RejectedExecutionHandler {
         public DiscardOldestPolicy() {
         }
 
-        public void rejectedExecution(Runnable r, BinaryThreadPoolExecutor e) {
+        public void rejectedExecution(Runnable r, BAKThreadPoolExecutor e) {
             if (!e.isShutdown()) {
                 e.getQueue().poll();
                 e.execute(r);
@@ -877,7 +829,7 @@ public class BinaryThreadPoolExecutor extends AbstractExecutorService {
         public DiscardPolicy() {
         }
 
-        public void rejectedExecution(Runnable r, BinaryThreadPoolExecutor e) {
+        public void rejectedExecution(Runnable r, BAKThreadPoolExecutor e) {
         }
     }
 
@@ -885,7 +837,7 @@ public class BinaryThreadPoolExecutor extends AbstractExecutorService {
         public AbortPolicy() {
         }
 
-        public void rejectedExecution(Runnable r, BinaryThreadPoolExecutor e) {
+        public void rejectedExecution(Runnable r, BAKThreadPoolExecutor e) {
             throw new RejectedExecutionException("Task " + r.toString() + " rejected from " + e.toString());
         }
     }
@@ -894,7 +846,7 @@ public class BinaryThreadPoolExecutor extends AbstractExecutorService {
         public CallerRunsPolicy() {
         }
 
-        public void rejectedExecution(Runnable r, BinaryThreadPoolExecutor e) {
+        public void rejectedExecution(Runnable r, BAKThreadPoolExecutor e) {
             if (!e.isShutdown()) {
                 r.run();
             }
@@ -902,7 +854,7 @@ public class BinaryThreadPoolExecutor extends AbstractExecutorService {
         }
     }
 
-    private final class Worker extends AbstractQueuedSynchronizer implements Runnable {
+    protected final class Worker extends AbstractQueuedSynchronizer implements Runnable {
         private static final long serialVersionUID = 6138294804551838833L;
         final Thread thread;
         Runnable firstTask;
@@ -911,11 +863,11 @@ public class BinaryThreadPoolExecutor extends AbstractExecutorService {
         Worker(Runnable firstTask) {
             this.setState(-1);
             this.firstTask = firstTask;
-            this.thread = BinaryThreadPoolExecutor.this.getThreadFactory().newThread(this);
+            this.thread = BAKThreadPoolExecutor.this.getThreadFactory().newThread(this);
         }
 
         public void run() {
-            BinaryThreadPoolExecutor.this.runWorker(this);
+            BAKThreadPoolExecutor.this.runWorker(this);
         }
 
         protected boolean isHeldExclusively() {

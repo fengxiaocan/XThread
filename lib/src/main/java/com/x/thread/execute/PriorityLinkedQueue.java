@@ -1,16 +1,19 @@
-package com.x.thread.thread;
+package com.x.thread.execute;
 
+import java.io.Serializable;
 import java.lang.reflect.Array;
+import java.util.AbstractQueue;
 import java.util.Collection;
 import java.util.Iterator;
 import java.util.NoSuchElementException;
 import java.util.Objects;
+import java.util.concurrent.BlockingQueue;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.locks.Condition;
 import java.util.concurrent.locks.ReentrantLock;
 
-public class BinaryQueue<E> implements ThreadQueue<E> {
+public class PriorityLinkedQueue<E> extends AbstractQueue<E> implements BlockingQueue<E>, Serializable {
     private final int capacity;
     private final AtomicInteger count;
     private final ReentrantLock takeLock;
@@ -20,11 +23,11 @@ public class BinaryQueue<E> implements ThreadQueue<E> {
     private final QueueNode<E> queue = new QueueNode<>();
     private final QueueNode<E> core = new QueueNode<>();
 
-    public BinaryQueue() {
+    public PriorityLinkedQueue() {
         this(2147483647);
     }
 
-    public BinaryQueue(int capacity) {
+    public PriorityLinkedQueue(int capacity) {
         this.count = new AtomicInteger();
         this.takeLock = new ReentrantLock();
         this.notEmpty = this.takeLock.newCondition();
@@ -39,7 +42,7 @@ public class BinaryQueue<E> implements ThreadQueue<E> {
         }
     }
 
-    public BinaryQueue(Collection<? extends E> c) {
+    public PriorityLinkedQueue(Collection<? extends E> c) {
         this(2147483647);
         ReentrantLock putLock = this.putLock;
         putLock.lock();
@@ -124,14 +127,13 @@ public class BinaryQueue<E> implements ThreadQueue<E> {
      * 阻塞等待加入核心队列
      *
      * @param e
-     * @param isCore  是否是核心的
+     * @param isPriority 是否是核心的
      * @param timeout
      * @param unit
      * @return
      * @throws InterruptedException
      */
-    @Override
-    public boolean offer(E e, boolean isCore, long timeout, TimeUnit unit) throws InterruptedException {
+    public boolean offer(E e, boolean isPriority, long timeout, TimeUnit unit) throws InterruptedException {
         if (e == null) {
             throw new NullPointerException();
         } else {
@@ -147,7 +149,7 @@ public class BinaryQueue<E> implements ThreadQueue<E> {
                     }
                     nanos = this.notFull.awaitNanos(nanos);
                 }
-                if (isCore) {
+                if (isPriority) {
                     core.enqueue(e);
                 } else {
                     queue.enqueue(e);
@@ -171,16 +173,52 @@ public class BinaryQueue<E> implements ThreadQueue<E> {
         return offer(e, false);
     }
 
+    @Override
+    public void put(E e) throws InterruptedException {
+        put(e, false);
+    }
+
+    public void put(E e, boolean isPriority) throws InterruptedException {
+        if (e == null) {
+            throw new NullPointerException();
+        } else {
+            ReentrantLock putLock = this.putLock;
+            AtomicInteger count = this.count;
+            putLock.lockInterruptibly();
+            int c;
+            try {
+                while (count.get() == this.capacity) {
+                    this.notFull.await();
+                }
+                if (isPriority) {
+                    core.enqueue(e);
+                } else {
+                    queue.enqueue(e);
+                }
+                c = count.getAndIncrement();
+                if (c + 1 < this.capacity) {
+                    this.notFull.signal();
+                }
+            } finally {
+                putLock.unlock();
+            }
+
+            if (c == 0) {
+                this.signalNotEmpty();
+            }
+
+        }
+    }
+
 
     /**
      * 直接加入队列,如果加入失败,则返回false
      *
      * @param e
-     * @param isCore 是否是核心队列
+     * @param isPriority 是否是核心队列
      * @return
      */
-    @Override
-    public boolean offer(E e, boolean isCore) {
+    public boolean offer(E e, boolean isPriority) {
         if (e == null) {
             throw new NullPointerException();
         } else {
@@ -195,7 +233,7 @@ public class BinaryQueue<E> implements ThreadQueue<E> {
                     if (count.get() == this.capacity) {
                         return false;
                     }
-                    if (isCore) {
+                    if (isPriority) {
                         core.enqueue(e);
                     } else {
                         queue.enqueue(e);
@@ -518,12 +556,120 @@ public class BinaryQueue<E> implements ThreadQueue<E> {
         return new Itr();
     }
 
+    final static class QueueNode<E> {
+        transient Node<E> head;
+        transient Node<E> last;
+
+        public void init() {
+            this.last = this.head = new Node(null);
+        }
+
+        public void enqueue(E e) {
+            Node<E> node = new Node<>(e);
+            this.last = this.last.next = node;
+        }
+
+        public E dequeue() {
+            Node<E> h = this.head;
+            Node<E> first = h.next;
+            if (first == null) return null;
+            h.next = h;
+            this.head = first;
+            E x = first.item;
+            first.item = null;
+            return x;
+        }
+
+        public E peek() {
+            if (this.head.next != null) {
+                return this.head.next.item;
+            } else {
+                return null;
+            }
+        }
+
+        public void unlink(Node<E> p, Node<E> pred) {
+            p.item = null;
+            pred.next = p.next;
+            if (this.last == p) {
+                this.last = pred;
+            }
+        }
+
+        public boolean remove(Object o) {
+            if (o != null) {
+                Node<E> pred = this.head;
+                for (Node<E> p = pred.next; p != null; p = p.next) {
+                    if (o.equals(p.item)) {
+                        this.unlink(p, pred);
+                        return true;
+                    }
+
+                    pred = p;
+                }
+            }
+            return false;
+        }
+
+        public boolean contains(Object o) {
+            for (Node<E> p = this.head.next; p != null; p = p.next) {
+                if (o.equals(p.item)) {
+                    return true;
+                }
+            }
+            return false;
+        }
+
+        public int toArray(Object[] array, int k) {
+            for (Node<E> p = this.head.next; p != null; p = p.next) {
+                array[k++] = p.item;
+            }
+            return k;
+        }
+
+        public void clear() {
+            this.last = this.head = new Node(null);
+        }
+
+        public int drainTo(Collection<? super E> c, int n) {
+            Node<E> h = this.head;
+            int i = 0;
+            try {
+                while (i < n) {
+                    Node<E> p = h.next;
+                    if (p == null) {
+                        break;
+                    }
+                    c.add(p.item);
+                    p.item = null;
+                    h.next = h;
+                    h = p;
+                    ++i;
+                }
+            } finally {
+                if (i > 0) {
+                    this.head = h;
+                }
+                return i;
+            }
+        }
+
+        static final class Node<E> {
+            E item;
+            Node<E> next;
+
+            Node(E x) {
+                this.item = x;
+            }
+        }
+    }
+
     private class Itr implements Iterator<E> {
         private final AtomicInteger count = new AtomicInteger(0);
         private final Object[] array;
 
         Itr() {
-            array = BinaryQueue.this.toArray();
+            array = PriorityLinkedQueue.this.toArray();
         }
 
         public boolean hasNext() {
@@ -535,12 +681,12 @@ public class BinaryQueue<E> implements ThreadQueue<E> {
             if (index >= array.length) {
                 throw new NoSuchElementException();
             } else {
-                BinaryQueue.this.fullyLock();
+                PriorityLinkedQueue.this.fullyLock();
                 try {
                     E x = (E) array[index];
                     return x;
                 } finally {
-                    BinaryQueue.this.fullyUnlock();
+                    PriorityLinkedQueue.this.fullyUnlock();
                 }
             }
         }
@@ -550,15 +696,16 @@ public class BinaryQueue<E> implements ThreadQueue<E> {
             if (index >= array.length) {
                 throw new IllegalStateException();
             } else {
-                BinaryQueue.this.fullyLock();
+                PriorityLinkedQueue.this.fullyLock();
                 try {
                     Object p = array[index];
-                    BinaryQueue.this.remove(p);
+                    PriorityLinkedQueue.this.remove(p);
                 } finally {
-                    BinaryQueue.this.fullyUnlock();
+                    PriorityLinkedQueue.this.fullyUnlock();
                 }
 
             }
         }
     }
+
 }

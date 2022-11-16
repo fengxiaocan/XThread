@@ -1,26 +1,21 @@
 package com.x.thread.producer;
 
-import com.x.thread.RxThreadPool;
+import com.x.thread.execute.RxExecutors;
 import com.x.thread.function.Observer;
 import com.x.thread.scheduler.Scheduler;
-import com.x.thread.thread.BinaryThreadPoolExecutor;
 
 import java.util.List;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.ThreadFactory;
-import java.util.concurrent.TimeUnit;
 
 public abstract class Producer<T> implements ProducerSource<T> {
+    private RxExecutors rxExecutors;
     private ThreadFactory threadFactory;
     private ExecutorService coreExecutor;
     private int maxCoreCount = 5;
-    //1：在没有其他程序运行的情况下运行。2-3：后台计算；4-6：IO；7-9：交互，事件驱动；10：关键问题；
-    private int priority = 5;
-    private boolean isDaemon = false;
-    private boolean isCore = false;
     private Observer observer;
     private Scheduler schedulers;
-    private String name = "Core-Work";
+    private RxExecutors.Mode mode = RxExecutors.Priority();
 
     public static <T> Producer<T> from(T... array) {
         return new ArrayProducer<>(array);
@@ -57,6 +52,11 @@ public abstract class Producer<T> implements ProducerSource<T> {
         return this;
     }
 
+    public final Producer<T> executeOn(RxExecutors executor) {
+        this.rxExecutors = executor;
+        return this;
+    }
+
     public final Producer<T> subscribeOn(Scheduler schedulers) {
         this.schedulers = schedulers;
         return this;
@@ -67,43 +67,52 @@ public abstract class Producer<T> implements ProducerSource<T> {
         return this;
     }
 
-    public final Producer<T> setPriority(int priority) {
-        this.priority = Math.min(Math.max(priority, 1), 10);
+    public final Producer<T> mode(RxExecutors.Mode mode) {
+        this.mode = mode;
+        if (rxExecutors != null) {
+            rxExecutors.setMode(mode);
+        }
+        coreExecutor = null;
         return this;
     }
 
-    public final Producer<T> calculate() {
-        this.priority = 6;
+    public final Producer<T> work() {
+        rxExecutors = RxExecutors.Work(mode);
+        coreExecutor = null;
         return this;
     }
 
-    public final Producer<T> setDaemon(boolean daemon) {
-        isDaemon = daemon;
-        return this;
-    }
-    public final Producer<T> setCore(boolean core) {
-        isCore = core;
+    public final Producer<T> work(int threadCount) {
+        rxExecutors = RxExecutors.Work(mode, threadCount);
+        coreExecutor = null;
         return this;
     }
 
     public final Producer<T> single() {
-        coreExecutor = RxThreadPool.single().executor();
-        name = "Single-Work";
-        priority = 5;
+        rxExecutors = RxExecutors.Single(mode);
+        coreExecutor = null;
         return this;
     }
 
     public final Producer<T> io() {
-        coreExecutor = RxThreadPool.io().executor();
-        name = "Io-Work";
-        priority = 7;
+        rxExecutors = RxExecutors.IO(mode);
+        coreExecutor = null;
+        return this;
+    }
+
+    public final Producer<T> io(int threadCount) {
+        rxExecutors = RxExecutors.IO(mode, threadCount);
+        coreExecutor = null;
         return this;
     }
 
     public final Producer<T> newThread() {
-        coreExecutor = RxThreadPool.newThread();
-        name = "New-Work";
-        priority = 5;
+        coreExecutor = RxExecutors.newThread(mode, 100);
+        return this;
+    }
+
+    public final Producer<T> newThread(int threadCount) {
+        coreExecutor = RxExecutors.newThread(mode, threadCount);
         return this;
     }
 
@@ -111,27 +120,31 @@ public abstract class Producer<T> implements ProducerSource<T> {
         return maxCoreCount;
     }
 
-    protected final boolean isCore() {
-        return isCore;
-    }
-
     protected final ProducerObserver createObserver() {
         return new ProducerObserver(observer, schedulers);
     }
 
     protected final ExecutorService coreExecutor() {
-        if (coreExecutor == null || coreExecutor.isShutdown() || coreExecutor.isTerminated()) {
-            coreExecutor = RxThreadPool.work().executor();
+        synchronized (Object.class) {
+            if (coreExecutor == null || coreExecutor.isShutdown() || coreExecutor.isTerminated()) {
+                if (rxExecutors == null) {
+                    rxExecutors = defaultExecutors();
+                }
+                coreExecutor = rxExecutors.executor();
+            }
         }
         return coreExecutor;
     }
 
-    protected final BinaryThreadPoolExecutor producerExecutor() {
-        BinaryThreadPoolExecutor executor = RxThreadPool.createExecutor(name, maxCoreCount, 5, TimeUnit.SECONDS, priority, isDaemon);
-        executor.allowCoreThreadTimeOut(true);
+    private RxExecutors defaultExecutors() {
+        return RxExecutors.Work(mode);
+    }
+
+    protected final ExecutorService producerExecutor() {
+        RxExecutors executors = RxExecutors.createQueue("Work", maxCoreCount);
         if (threadFactory != null) {
-            executor.setThreadFactory(threadFactory);
+            executors.setThreadFactory(threadFactory);
         }
-        return executor;
+        return executors.executor();
     }
 }

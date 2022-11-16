@@ -5,4 +5,6 @@ import com.x.thread.function.Worker;
 
 public interface ProducerSource<T> {
     RxFuture<Long> execute(Worker<T> worker);
+
+    RxFuture<Long> priorityExecute(Worker<T> worker);
 }
